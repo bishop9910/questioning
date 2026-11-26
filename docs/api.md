@@ -20,9 +20,9 @@
 // Option   nextQuestionId: 0 表示不跳转（顺序下一题 / 交卷）
 { "id": 11, "label": "满意", "nextQuestionId": 0 }
 
-// Question
+// Question   minSelect / maxSelect 只对多选题有意义，0 表示不限
 { "id": 1, "type": "single", "title": "你的年级", "description": "",
-  "required": true, "options": [ ... ] }
+  "required": true, "minSelect": 0, "maxSelect": 0, "options": [ ... ] }
 
 // SurveyDetail
 { "id": 1, "title": "...", "description": "", "status": "draft", "anonymous": false,
@@ -32,6 +32,7 @@
 
 `type`：`single` 单选 / `multiple` 多选 / `text` 填空 / `rating` 评分（1–5，选项自动生成）。
 `status`：`draft` / `published` / `closed`。
+`required`：每题独立的必答开关；`minSelect` / `maxSelect` 只对多选题生效，`0` 表示不限（例如 `minSelect:1, maxSelect:2` 表示必须选 1~2 项）。
 
 ## 账号
 
@@ -58,6 +59,7 @@
 - 带 `id > 0` 的题目原地更新，`id == 0` 的插入；本次没出现的题目被删除（连带其答案）。
 - 顺序按数组下标写 `order_no`（内部用双向链表重排）。
 - 跳题目标必须指向本卷中的题目或 0；有环返回 400，`message` 里指出环上题目。
+- 多选题的 `minSelect` / `maxSelect` 必须是 0 或正数，`minSelect<=maxSelect` 且不能超过选项数量，否则 400。
 
 ## 公开填写
 
@@ -67,6 +69,8 @@
 | POST | `/public/surveys/{id}/submit` | `{"answers":[{"questionId","optionIds":[],"text":""}],"durationSec":90}` | `{"id":5}` |
 
 公开取卷只返回 `published` 的问卷（草稿或已关闭返回 403）。`nextQuestionId` 会一并返回，填写页用它实现选项跳题；0 表示顺序进入下一题。
+
+交卷时按题目配置校验：路径上的必答题未答返回 400「第 N 题「标题」为必答题」；多选题选项数超出 `maxSelect` 或少于 `minSelect` 也返回 400。
 
 ## 统计与答卷
 

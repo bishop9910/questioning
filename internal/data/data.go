@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS questions (
 	title       TEXT    NOT NULL,
 	description TEXT    NOT NULL DEFAULT '',
 	required    INTEGER NOT NULL DEFAULT 0,
+	min_select  INTEGER NOT NULL DEFAULT 0,
+	max_select  INTEGER NOT NULL DEFAULT 0,
 	order_no    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_questions_survey ON questions(survey_id, order_no);
@@ -105,6 +107,13 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("建表失败: %w", err)
+	}
+	// 老库补列：多选题的最少 / 最多可选数量
+	for _, stmt := range []string{
+		`ALTER TABLE questions ADD COLUMN min_select INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE questions ADD COLUMN max_select INTEGER NOT NULL DEFAULT 0`,
+	} {
+		_, _ = db.Exec(stmt) // 列已存在时 SQLite 报错，忽略即可
 	}
 	return &Store{db: db}, nil
 }
@@ -292,7 +301,7 @@ func (s *Store) DeleteSurvey(id int64) error {
 
 // Questions 取一份问卷的题目与选项，按 order_no 排好。
 func (s *Store) Questions(surveyID int64) ([]model.Question, error) {
-	rows, err := s.db.Query(`SELECT id, survey_id, type, title, description, required, order_no
+	rows, err := s.db.Query(`SELECT id, survey_id, type, title, description, required, min_select, max_select, order_no
 		FROM questions WHERE survey_id=? ORDER BY order_no, id`, surveyID)
 	if err != nil {
 		return nil, err
@@ -304,7 +313,7 @@ func (s *Store) Questions(surveyID int64) ([]model.Question, error) {
 			q        model.Question
 			required int
 		)
-		if err := rows.Scan(&q.ID, &q.SurveyID, &q.Type, &q.Title, &q.Description, &required, &q.OrderNo); err != nil {
+		if err := rows.Scan(&q.ID, &q.SurveyID, &q.Type, &q.Title, &q.Description, &required, &q.MinSelect, &q.MaxSelect, &q.OrderNo); err != nil {
 			rows.Close()
 			return nil, err
 		}

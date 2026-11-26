@@ -28,6 +28,7 @@ type Survey struct {
 }
 
 // Question 一道题，type 为 single / multiple / text / rating。
+// MinSelect / MaxSelect 只对多选题有意义，0 表示不限。
 type Question struct {
 	ID          int64
 	SurveyID    int64
@@ -35,6 +36,8 @@ type Question struct {
 	Title       string
 	Description string
 	Required    bool
+	MinSelect   int
+	MaxSelect   int
 	OrderNo     int
 	Options     []Option
 }

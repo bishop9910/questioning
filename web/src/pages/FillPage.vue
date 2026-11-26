@@ -79,9 +79,32 @@ function setSingle(q, v) {
   ensure(q.id).optionIds = v === null ? [] : [v]
 }
 
-function toggleMulti(q, oid, checked) {
-  const a = ensure(q.id)
-  a.optionIds = checked ? [...a.optionIds, oid] : a.optionIds.filter((x) => x !== oid)
+function setMulti(q, vals) {
+  let list = Array.isArray(vals) ? vals.slice() : []
+  if (q.maxSelect > 0 && list.length > q.maxSelect) {
+    message.warning(`这道题最多只能选 ${q.maxSelect} 项`)
+    list = list.slice(0, q.maxSelect)
+  }
+  ensure(q.id).optionIds = list
+}
+
+function isPicked(q, o) {
+  const a = answers[q.id]
+  return !!a && a.optionIds.includes(o.id)
+}
+
+function toggleMulti(q, o) {
+  if (multiDisabled(q, o)) return
+  const cur = answers[q.id]?.optionIds || []
+  setMulti(q, isPicked(q, o) ? cur.filter((x) => x !== o.id) : [...cur, o.id])
+}
+
+// 已经选满上限时，未选中的选项禁用
+function multiDisabled(q, o) {
+  const a = answers[q.id]
+  const picked = a ? a.optionIds.includes(o.id) : false
+  if (picked) return false
+  return q.maxSelect > 0 && (a ? a.optionIds.length : 0) >= q.maxSelect
 }
 
 function ratingValue(q) {
@@ -114,6 +137,15 @@ async function next() {
   const q = current.value
   if (!q) return
   if (q.required && !answered(q)) return message.warning('这道题是必答题，填完再继续')
+  if (q.type === 'multiple') {
+    const n = (answers[q.id]?.optionIds || []).length
+    if (q.minSelect > 0 && n > 0 && n < q.minSelect) {
+      return message.warning(`这道题至少要选 ${q.minSelect} 项`)
+    }
+    if (q.maxSelect > 0 && n > q.maxSelect) {
+      return message.warning(`这道题最多只能选 ${q.maxSelect} 项`)
+    }
+  }
   const to = nextIndex(q)
   if (to >= survey.value.questions.length) return submit()
   path.value.push(to)
@@ -205,41 +237,45 @@ function restart() {
 
           <div class="opts">
             <template v-if="current.type === 'single'">
-              <n-radio-group
-                :value="singleValue(current)"
-                @update:value="(v) => setSingle(current, v)"
-              >
-                <div class="opt-list">
-                  <label
-                    v-for="o in current.options"
-                    :key="o.id"
-                    class="opt"
-                    :class="{ picked: singleValue(current) === o.id }"
-                  >
-                    <n-radio :value="o.id" />
-                    <span>{{ o.label }}</span>
-                  </label>
-                </div>
-              </n-radio-group>
+              <div class="opt-list">
+                <label
+                  v-for="o in current.options"
+                  :key="o.id"
+                  class="opt"
+                  :class="{ picked: singleValue(current) === o.id }"
+                  @click.prevent="setSingle(current, o.id)"
+                >
+                  <n-radio :checked="singleValue(current) === o.id" :value="o.id" />
+                  <span>{{ o.label }}</span>
+                </label>
+              </div>
             </template>
 
             <template v-else-if="current.type === 'multiple'">
-              <n-checkbox-group :value="answers[current.id]?.optionIds || []">
-                <div class="opt-list">
-                  <label
-                    v-for="o in current.options"
-                    :key="o.id"
-                    class="opt"
-                    :class="{ picked: (answers[current.id]?.optionIds || []).includes(o.id) }"
-                  >
-                    <n-checkbox
-                      :value="o.id"
-                      @update:checked="(c) => toggleMulti(current, o.id, c)"
-                    />
-                    <span>{{ o.label }}</span>
-                  </label>
-                </div>
-              </n-checkbox-group>
+              <div class="opt-list">
+                <label
+                  v-for="o in current.options"
+                  :key="o.id"
+                  class="opt"
+                  :class="{
+                    picked: isPicked(current, o),
+                    muted: multiDisabled(current, o),
+                  }"
+                  @click.prevent="toggleMulti(current, o)"
+                >
+                  <n-checkbox
+                    :checked="isPicked(current, o)"
+                    :disabled="multiDisabled(current, o)"
+                  />
+                  <span>{{ o.label }}</span>
+                </label>
+              </div>
+              <div class="multi-hint">
+                <span>已选 {{ (answers[current.id]?.optionIds || []).length }} 项</span>
+                <span v-if="current.minSelect > 0"> · 至少 {{ current.minSelect }} 项</span>
+                <span v-if="current.maxSelect > 0"> · 最多 {{ current.maxSelect }} 项</span>
+                <span v-if="!current.minSelect && !current.maxSelect"> · 可多选</span>
+              </div>
             </template>
 
             <template v-else-if="current.type === 'rating'">
@@ -373,6 +409,19 @@ function restart() {
 .opt.picked {
   border-color: var(--primary);
   background: #eff6ff;
+}
+.opt.muted {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.opt.muted:hover {
+  border-color: var(--border);
+  background: transparent;
+}
+.multi-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
 }
 .rating-row {
   display: flex;

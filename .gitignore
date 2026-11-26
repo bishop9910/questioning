@@ -14,6 +14,11 @@ web/.localappdata/
 
 # 自测脚本
 _*.ps1
+_*.mjs
+
+# 无头浏览器截图 / 配置
+.edge-*/
+shots/
 
 # 编辑器 / 系统
 .idea/

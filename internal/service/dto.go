@@ -39,13 +39,15 @@ type OptionDTO struct {
 	NextQuestionID int64  `json:"nextQuestionId"`
 }
 
-// QuestionDTO 是题目。
+// QuestionDTO 是题目。MinSelect / MaxSelect 只对多选题有意义，0 表示不限。
 type QuestionDTO struct {
 	ID          int64       `json:"id"`
 	Type        string      `json:"type"`
 	Title       string      `json:"title"`
 	Description string      `json:"description"`
 	Required    bool        `json:"required"`
+	MinSelect   int         `json:"minSelect"`
+	MaxSelect   int         `json:"maxSelect"`
 	Options     []OptionDTO `json:"options"`
 }
 
@@ -84,6 +86,8 @@ func toSurveyDTO(sv model.Survey, withQuestions bool) SurveyDTO {
 				Title:       q.Title,
 				Description: q.Description,
 				Required:    q.Required,
+				MinSelect:   q.MinSelect,
+				MaxSelect:   q.MaxSelect,
 				Options:     []OptionDTO{},
 			}
 			for _, o := range q.Options {
@@ -135,6 +139,8 @@ type QuestionSaveDTO struct {
 	Title       string          `json:"title"`
 	Description string          `json:"description"`
 	Required    bool            `json:"required"`
+	MinSelect   int             `json:"minSelect"`
+	MaxSelect   int             `json:"maxSelect"`
 	Options     []OptionSaveDTO `json:"options"`
 }
 

@@ -16,6 +16,7 @@
    - 4 种题型：单选、多选、填空、评分（1–5）
    - 题目卡片可直接拖拽重排，也可以用 ↑ ↓ 按钮微调；支持删除
    - 题目属性：题型、题干、补充说明、是否必答、选项增删
+   - **多选题可选数量**：每道多选题能单独设「最少选几项 / 最多选几项」，0 表示不限；选满上限后其余选项自动置灰，提交时后端再校验一次
    - **跳题**：单选 / 多选题的每个选项都能配置「选了它之后跳到第几题」，0 表示按顺序进入下一题；保存时做环检测，A→B→A 这种死循环直接报 400
    - 撤销 / 重做（按钮，或 Ctrl+Z / Ctrl+Shift+Z）
 4. **填写端**：公开链接 `/s/:id`，手机单列、桌面居中卡片；进度条、必答校验、上一题 / 下一题；严格按跳题逻辑只走相关题目。
@@ -66,6 +67,7 @@ Questioning/
 │   ├── src/router.js        # 路由 + 登录守卫
 │   └── dist/                # 构建产物，随仓库提交（见快速开始）
 ├── docs/api.md              # 接口约定
+├── Makefile                 # 常用命令（build / run / check / clean）
 └── README.md
 ```
 
@@ -90,6 +92,7 @@ Questioning/
 - **环检测**：整卷保存时把「题目 → 跳转目标」建成有向图（新题用负数占位 `-n` 表示第 n 题，保存时换成真实 id），DFS 三色标记找环，有环返回 400。
 - **跳题路径**：交卷时从第 1 题出发，按「所选项的 `nextQuestionId`」逐步前进，得到本次实际作答路径。
 - **必答校验**：只校验路径上的题目；路径外的题不参与校验，也不会写进答卷。
+- **多选数量校验**：多选题的 `minSelect` / `maxSelect` 存在题目上，0 表示不限；填写端选满上限后其余选项置灰，后端在交卷时再按题目配置校验一次，防止绕过前端。
 - **高频词**：填空答案按 unicode 标点 / 空白切分，丢弃单字，再用哈希表计数、小顶堆取前 10。
 - **分页**：每份问卷的答卷建一棵跳表做索引（`submittedAt` 为 score，response id 为 value），分页和区间查询走跳表取 id 再回库，新答卷提交时让 LRU 失效并重建。
 
@@ -108,15 +111,27 @@ go build -o questioning ./cmd/server
 
 Windows 就是 `go build -o questioning.exe ./cmd/server`，然后命令行或双击运行。
 
-想改前端（需要 Node ≥ 20）：
+也可以用 Makefile（Debian / macOS 自带 make）：
+
+```bash
+make          # 打包前端 + 编译，等价于 make build
+make run      # 编译后直接运行
+make build-go # 只编 Go（跳过前端，用仓库里已有的 web/dist）
+make check    # fmt + vet + 单测
+make clean    # 清理二进制、dist、本地数据库
+```
+
+想改前端（需要 Node ≥ 20 + pnpm ≥ 9）：
 
 ```bash
 cd web
-npm install
-npm run build              # 产物写到 web/dist
+pnpm install
+pnpm run build              # 产物写到 web/dist
 cd ..
 go build -o questioning ./cmd/server   # 重新编译，前端被打进二进制
 ```
+
+`web/pnpm-workspace.yaml` 里放行了 esbuild 的安装脚本（pnpm 10+ 默认拦截依赖脚本），第一次 `pnpm install` 如果提示 `Ignored build scripts`，执行一次 `pnpm approve-builds` 选上 esbuild 即可。
 
 **种子账号**（首次启动自动建表并写入）：
 

@@ -291,6 +291,8 @@ func (s *Service) SaveQuestions(ctx khttp.Context) error {
 			Title:       q.Title,
 			Description: q.Description,
 			Required:    q.Required,
+			MinSelect:   q.MinSelect,
+			MaxSelect:   q.MaxSelect,
 		}
 		for _, o := range q.Options {
 			in.Options = append(in.Options, data.SaveOptionInput{Label: o.Label, NextQuestionID: o.NextQuestionID})

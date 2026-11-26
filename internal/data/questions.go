@@ -21,6 +21,8 @@ type SaveQuestionInput struct {
 	Title       string
 	Description string
 	Required    bool
+	MinSelect   int
+	MaxSelect   int
 	Options     []SaveOptionInput
 }
 
@@ -122,17 +124,25 @@ func (s *Store) SaveQuestions(surveyID int64, inputs []SaveQuestionInput) ([]mod
 		if in.Required {
 			required = 1
 		}
+		// 可选数量只对多选题有意义
+		minSel, maxSel := in.MinSelect, in.MaxSelect
+		if in.Type != "multiple" || minSel < 0 {
+			minSel = 0
+		}
+		if in.Type != "multiple" || maxSel < 0 {
+			maxSel = 0
+		}
 		if key > 0 && existing[key] {
-			if _, err := tx.Exec(`UPDATE questions SET type=?, title=?, description=?, required=?, order_no=?
+			if _, err := tx.Exec(`UPDATE questions SET type=?, title=?, description=?, required=?, min_select=?, max_select=?, order_no=?
 				WHERE id=? AND survey_id=?`,
-				in.Type, in.Title, in.Description, required, pos, key, surveyID); err != nil {
+				in.Type, in.Title, in.Description, required, minSel, maxSel, pos, key, surveyID); err != nil {
 				return nil, err
 			}
 			realIDs[key] = key
 			continue
 		}
-		res, err := tx.Exec(`INSERT INTO questions(survey_id, type, title, description, required, order_no)
-			VALUES(?,?,?,?,?,?)`, surveyID, in.Type, in.Title, in.Description, required, pos)
+		res, err := tx.Exec(`INSERT INTO questions(survey_id, type, title, description, required, min_select, max_select, order_no)
+			VALUES(?,?,?,?,?,?,?,?)`, surveyID, in.Type, in.Title, in.Description, required, minSel, maxSel, pos)
 		if err != nil {
 			return nil, err
 		}

@@ -247,6 +247,20 @@ func (u *Usecase) SaveQuestions(id, ownerID int64, inputs []data.SaveQuestionInp
 					return nil, failf(400, "第 %d 题第 %d 个选项为空", i+1, j+1)
 				}
 			}
+			if in.Type == "multiple" {
+				if in.MinSelect < 0 || in.MaxSelect < 0 {
+					return nil, failf(400, "第 %d 题的可选数量不能为负数", i+1)
+				}
+				if in.MaxSelect > 0 && in.MinSelect > in.MaxSelect {
+					return nil, failf(400, "第 %d 题的最少可选数不能大于最多可选数", i+1)
+				}
+				if in.MaxSelect > len(in.Options) {
+					return nil, failf(400, "第 %d 题最多可选数不能超过选项数量", i+1)
+				}
+				if in.MinSelect > len(in.Options) {
+					return nil, failf(400, "第 %d 题最少可选数不能超过选项数量", i+1)
+				}
+			}
 		}
 	}
 
@@ -341,6 +355,17 @@ func (u *Usecase) Submit(id int64, durationSec int, device string, answers []dat
 		switch q.Type {
 		case "text":
 			if q.Required && strings.TrimSpace(a.Text) == "" {
+				return 0, failf(400, "第 %d 题「%s」为必答题", q.OrderNo+1, q.Title)
+			}
+		case "multiple":
+			n := len(a.OptionIDs)
+			if q.MaxSelect > 0 && n > q.MaxSelect {
+				return 0, failf(400, "第 %d 题「%s」最多可选 %d 项", q.OrderNo+1, q.Title, q.MaxSelect)
+			}
+			if q.MinSelect > 0 && n < q.MinSelect {
+				return 0, failf(400, "第 %d 题「%s」至少选 %d 项", q.OrderNo+1, q.Title, q.MinSelect)
+			}
+			if q.Required && n == 0 {
 				return 0, failf(400, "第 %d 题「%s」为必答题", q.OrderNo+1, q.Title)
 			}
 		default:

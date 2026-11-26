@@ -6,6 +6,7 @@ import {
   NCard,
   NEmpty,
   NInput,
+  NInputNumber,
   NSelect,
   NSwitch,
   NTag,
@@ -32,6 +33,9 @@ const titleForm = reactive({ title: '', description: '', anonymous: false })
 
 let uid = 1
 const nkey = (p) => `${p}${uid++}`
+// 新题的临时 id：负数且唯一，保存时再换算成「第 n 题」的负数
+let tmpSeq = 1
+const ntmp = () => -(tmpSeq++)
 
 const typeOptions = [
   { label: '单选题', value: 'single' },
@@ -46,10 +50,13 @@ function fromServer(list) {
   return (list || []).map((q) => ({
     key: nkey('q'),
     id: q.id || 0,
+    tmpId: 0,
     type: q.type,
     title: q.title,
     description: q.description || '',
     required: !!q.required,
+    minSelect: q.minSelect || 0,
+    maxSelect: q.maxSelect || 0,
     options: (q.options || []).map((o) => ({
       key: nkey('o'),
       id: o.id || 0,
@@ -136,10 +143,13 @@ function addQuestion(type = 'single') {
   const q = {
     key: nkey('q'),
     id: 0,
+    tmpId: ntmp(),
     type,
     title: '',
     description: '',
     required: true,
+    minSelect: 0,
+    maxSelect: 0,
     options:
       type === 'single' || type === 'multiple'
         ? [makeOption('选项 1'), makeOption('选项 2')]
@@ -155,7 +165,14 @@ function makeOption(label) {
 
 function removeQuestion(q) {
   snapshot()
+  // 删题时把它作为跳转目标的引用一并清掉，避免保存时报「指向了不存在的题目」
+  const target = q.id > 0 ? q.id : q.tmpId
   questions.value = questions.value.filter((x) => x.key !== q.key)
+  for (const other of questions.value) {
+    for (const o of other.options || []) {
+      if (target && o.nextQuestionId === target) o.nextQuestionId = 0
+    }
+  }
   if (selectedKey.value === q.key) {
     selectedKey.value = questions.value.length ? questions.value[0].key : null
   }
@@ -175,7 +192,21 @@ function changeType(q) {
   if (hasChoice(q) && q.options.length < 2) {
     q.options = [makeOption('选项 1'), makeOption('选项 2')]
   }
-  if (!hasChoice(q)) q.options = []
+  if (!hasChoice(q)) {
+    q.options = []
+    q.minSelect = 0
+    q.maxSelect = 0
+  }
+  if (q.type !== 'multiple') {
+    q.minSelect = 0
+    q.maxSelect = 0
+  }
+}
+
+function setRequired(v) {
+  if (!selected.value) return
+  snapshot()
+  selected.value.required = !!v
 }
 
 function addOption(q) {
@@ -210,11 +241,12 @@ function onDrop(i) {
   questions.value = arr
 }
 
-/* 跳转下拉：值 0 不跳转；已有题用真实 id；新题用 -(index+1) */
+/* 跳转下拉：值 0 不跳转；已有题用真实 id；新题用它自己的临时负数 id，
+   保存时再统一换算成「第 n 题」（-n）。这样排序 / 删题都不会串位。 */
 const jumpOptions = computed(() =>
   questions.value.map((q, i) => ({
     label: `第 ${i + 1} 题 · ${q.title || '未命名'}`,
-    value: q.id > 0 ? q.id : -(i + 1),
+    value: q.id > 0 ? q.id : q.tmpId,
   })),
 )
 
@@ -241,7 +273,36 @@ async function saveQuestions() {
       if (q.options.length < 2) return message.warning(`第 ${i + 1} 题至少要 2 个选项`)
       if (q.options.some((o) => !o.label.trim())) return message.warning(`第 ${i + 1} 题有选项内容为空`)
     }
+    if (q.type === 'multiple') {
+      const minSel = Math.max(0, Number(q.minSelect) || 0)
+      const maxSel = Math.max(0, Number(q.maxSelect) || 0)
+      if (maxSel > 0 && minSel > maxSel) return message.warning(`第 ${i + 1} 题的最少可选数不能大于最多可选数`)
+      if (maxSel > q.options.length) return message.warning(`第 ${i + 1} 题的最多可选数不能超过选项数量`)
+      if (minSel > q.options.length) return message.warning(`第 ${i + 1} 题的最少可选数不能超过选项数量`)
+    }
   }
+
+  // 位置映射：新题用「第 n 题」的负数提交，已有题用真实 id
+  const posOf = new Map()
+  const exists = new Set()
+  questions.value.forEach((q, i) => {
+    if (q.id > 0) {
+      exists.add(q.id)
+      posOf.set(q.id, i + 1)
+    } else {
+      posOf.set(q.tmpId, i + 1)
+    }
+  })
+  const normNext = (v) => {
+    const next = Number(v) || 0
+    if (next > 0) return exists.has(next) ? next : 0
+    if (next < 0) {
+      const pos = posOf.get(next)
+      return pos ? -pos : 0
+    }
+    return 0
+  }
+
   saving.value = true
   try {
     const payload = questions.value.map((q) => ({
@@ -250,9 +311,11 @@ async function saveQuestions() {
       title: q.title.trim(),
       description: (q.description || '').trim(),
       required: !!q.required,
+      minSelect: q.type === 'multiple' ? Math.max(0, Number(q.minSelect) || 0) : 0,
+      maxSelect: q.type === 'multiple' ? Math.max(0, Number(q.maxSelect) || 0) : 0,
       options: (q.options || []).map((o) => ({
         label: o.label.trim(),
-        nextQuestionId: o.nextQuestionId || 0,
+        nextQuestionId: normNext(o.nextQuestionId),
       })),
     }))
     const sv = await api.saveQuestions(surveyId, payload)
@@ -260,8 +323,10 @@ async function saveQuestions() {
     history.value = []
     future.value = []
     message.success('题目已保存')
+    return true
   } catch (e) {
     message.error(e.message)
+    return false
   } finally {
     saving.value = false
   }
@@ -269,8 +334,9 @@ async function saveQuestions() {
 
 async function publish() {
   if (questions.value.length === 0) return message.warning('先添加题目再发布')
+  const ok = await saveQuestions()
+  if (!ok) return
   try {
-    await saveQuestions()
     await api.setStatus(surveyId, 'published')
     message.success('已发布，可以复制链接分享了')
     await load()
@@ -386,6 +452,9 @@ function removeSurvey() {
               <div class="q-title ellipsis">{{ q.title || '未命名题目' }}</div>
               <div class="muted" style="font-size: 12px; margin-top: 2px">
                 {{ typeText[q.type] }}<template v-if="q.required"> · 必答</template>
+                <template v-if="q.type === 'multiple' && (q.minSelect || q.maxSelect)">
+                  · 选 {{ q.minSelect || 0 }}~{{ q.maxSelect || '不限' }} 项
+                </template>
                 <template v-if="hasChoice(q)"> · {{ q.options.length }} 个选项</template>
               </div>
             </div>
@@ -442,8 +511,36 @@ function removeSurvey() {
             </div>
             <div class="field row" style="justify-content: space-between">
               <span class="label" style="margin: 0">必答题</span>
-              <n-switch v-model:value="selected.required" size="small" />
+              <n-switch :value="selected.required" size="small" @update:value="setRequired" />
             </div>
+
+            <template v-if="selected.type === 'multiple'">
+              <div class="field row" style="justify-content: space-between">
+                <span class="label" style="margin: 0">最少可选</span>
+                <n-input-number
+                  v-model:value="selected.minSelect"
+                  size="small"
+                  :min="0"
+                  :max="selected.options.length"
+                  placeholder="0 = 不限"
+                  style="width: 120px"
+                />
+              </div>
+              <div class="field row" style="justify-content: space-between">
+                <span class="label" style="margin: 0">最多可选</span>
+                <n-input-number
+                  v-model:value="selected.maxSelect"
+                  size="small"
+                  :min="0"
+                  :max="selected.options.length"
+                  placeholder="0 = 不限"
+                  style="width: 120px"
+                />
+              </div>
+              <div class="muted" style="font-size: 12px; margin: -4px 0 10px">
+                填 0 表示不限；例如最少 1、最多 2 表示必须选 1~2 项。
+              </div>
+            </template>
 
             <template v-if="hasChoice(selected)">
               <div class="label" style="margin-bottom: 8px">选项与跳转</div>
