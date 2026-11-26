@@ -1,5 +1,5 @@
 server:
-  addr: ":8000"
+  addr: ":8001"
   timeout_sec: 30
   # 生产环境请改成随机长字符串
   jwt_secret: "questioning-dev-secret-2026"
