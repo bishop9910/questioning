@@ -1,0 +1,26 @@
+# 构建产物与本地数据
+/questioning
+/questioning.exe
+/data/
+/*.db
+
+# 前端依赖与本地缓存（dist 要提交，别加进来）
+web/node_modules/
+web/.tmp/
+web/.npmcache/
+web/.store/
+web/.cache/
+web/.localappdata/
+
+# 自测脚本
+_*.ps1
+
+# 编辑器 / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 本地工具产物
+.graphflow/
+graphflow-out/

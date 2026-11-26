@@ -1,0 +1,14 @@
+server:
+  addr: ":8000"
+  timeout_sec: 30
+  # 生产环境请改成随机长字符串
+  jwt_secret: "questioning-dev-secret-2026"
+  token_ttl_hours: 72
+
+database:
+  # 相对工作目录；首次启动自动建表
+  path: "data/questioning.db"
+
+seed:
+  # 首次启动写入演示账号 admin/admin123、demo/demo123
+  enabled: true
